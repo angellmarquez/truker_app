@@ -288,7 +288,7 @@ class _DriverCard extends StatelessWidget {
                   ),
                 ),
               ),
-            ]),
+            ])),
           ),
           actions: [
             TextButton(
@@ -638,7 +638,7 @@ class _RegisterDriverTabState extends State<_RegisterDriverTab> {
           const SizedBox(height: 28),
           TextFormField(
             controller: _nameController,
-            maxLength: 40,
+            maxLength: 30,
             decoration: const InputDecoration(
               labelText: 'Nombre Completo',
               prefixIcon: Icon(Icons.person_outline),
