@@ -177,18 +177,21 @@ class FirebaseService {
     });
   }
 
-  /// El Admin libera a un conductor (cuando completó el viaje)
+  /// El Admin libera a un conductor (cuando completó el viaje o por intervención manual)
   Future<void> clearDriverAssignment(String driverId, String? truckId) async {
+    // 1. Limpiar perfiles
     await firestore.collection('profiles').doc(driverId).update({
       'assigned_truck_id': null,
       'assigned_truck_plate': null,
       'current_cargo': null,
       'destination': null,
       'assignment_status': null,
-      'is_active': false, // Marcar como inactivo al liberar
+      'is_active': false,
       'delivery_photo_url': null,
       'delivery_completed_at': null,
     });
+
+    // 2. Limpiar camión
     if (truckId != null) {
       await firestore.collection('trucks').doc(truckId).update({
         'assigned_driver_id': null,
@@ -196,6 +199,20 @@ class FirebaseService {
         'current_cargo': null,
         'destination': null,
         'status': 'stopped',
+      });
+    }
+
+    // 3. Cerrar cualquier viaje activo para este conductor (Intervención Admin)
+    final activeTrips = await firestore.collection('trips')
+        .where('driver_id', isEqualTo: driverId)
+        .where('is_active', isEqualTo: true)
+        .get();
+    
+    for (var doc in activeTrips.docs) {
+      await firestore.collection('trips').doc(doc.id).update({
+        'is_active': false,
+        // No ponemos end_time si fue una liberación manual sin entrega, 
+        // así distinguimos en el reporte.
       });
     }
   }
@@ -212,6 +229,8 @@ class FirebaseService {
   Future<void> markDeliveryCompleted({
     required String driverId,
     required String truckId,
+    required double distance,
+    required double endFuel,
   }) async {
     // Actualizar el perfil del conductor indicando entrega completada
     await firestore.collection('profiles').doc(driverId).update({
@@ -220,7 +239,7 @@ class FirebaseService {
       'delivery_completed_at': FieldValue.serverTimestamp(),
     });
 
-    // Guardar en el historial de viajes del camión si existe el viaje activo
+    // Guardar en el historial de viajes del camión
     final tripsQuery = await firestore.collection('trips')
         .where('driver_id', isEqualTo: driverId)
         .where('is_active', isEqualTo: true)
@@ -231,12 +250,15 @@ class FirebaseService {
       await firestore.collection('trips').doc(tripsQuery.docs.first.id).update({
         'is_active': false,
         'end_time': FieldValue.serverTimestamp(),
+        'end_fuel': endFuel,
+        'distance_km': distance,
       });
     }
 
-    // Detener el camión
+    // Actualizar el camión: detenerlo y actualizar su combustible actual
     await firestore.collection('trucks').doc(truckId).update({
       'status': 'stopped',
+      'current_fuel': endFuel,
     });
   }
 
@@ -268,6 +290,26 @@ class FirebaseService {
     await firestore.collection('profiles').doc(driverId).delete();
   }
 
+  Future<void> deleteTruck(String truckId) async {
+    // Antes de borrar, limpiamos la asignación del conductor si existe
+    final doc = await firestore.collection('trucks').doc(truckId).get();
+    if (doc.exists) {
+      final data = doc.data();
+      final driverId = data?['assigned_driver_id'];
+      if (driverId != null) {
+        await firestore.collection('profiles').doc(driverId).update({
+          'assigned_truck_id': null,
+          'assigned_truck_plate': null,
+          'current_cargo': null,
+          'destination': null,
+          'assignment_status': null,
+          'is_active': false,
+        });
+      }
+    }
+    await firestore.collection('trucks').doc(truckId).delete();
+  }
+
   // --- TRUCKS & TRACKING ---
 
   Stream<List<Truck>> getTrucksStream() {
@@ -285,9 +327,17 @@ class FirebaseService {
     });
   }
 
+  Future<void> updateDriverLocation(String driverId, double lat, double lon) async {
+    await firestore.collection('profiles').doc(driverId).update({
+      'last_latitude': lat,
+      'last_longitude': lon,
+      'last_seen': FieldValue.serverTimestamp(),
+    });
+  }
+
   // --- TRIPS & FUEL ---
 
-  Future<void> startTrip(String truckId, String cargo, double startFuel) async {
+  Future<void> startTrip(String truckId, String cargo, double startFuel, double consumptionRate) async {
     if (auth.currentUser == null) return;
     
     await firestore.collection('trips').add({
@@ -295,6 +345,7 @@ class FirebaseService {
       'driver_id': auth.currentUser!.uid,
       'cargo_details': cargo,
       'start_fuel': startFuel,
+      'consumption_rate': consumptionRate,
       'start_time': FieldValue.serverTimestamp(),
       'is_active': true,
       'distance_km': 0.0,

@@ -9,15 +9,24 @@ import 'admin_screen.dart';
 import 'driver_map_screen.dart'; // Añadido el import
 
 class HomeScreen extends StatefulWidget {
-  const HomeScreen({super.key});
+  static final GlobalKey<_HomeScreenState> homeKey = GlobalKey<_HomeScreenState>();
+  HomeScreen() : super(key: homeKey);
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
+
+  static void setIndex(int index) {
+    homeKey.currentState?.setIndex(index);
+  }
 }
 
 class _HomeScreenState extends State<HomeScreen> {
   int _selectedIndex = 0;
   UserProfile? _profile;
+
+  void setIndex(int index) {
+    setState(() => _selectedIndex = index);
+  }
 
   bool _isError = false;
   String _errorMessage = '';
@@ -64,7 +73,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   List<Widget> get _adminScreens => [
-    const MonitoringScreen(),
+    MonitoringScreen(),
     const ReportsScreen(),
     const AdminScreen(),
   ];

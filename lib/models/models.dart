@@ -96,6 +96,7 @@ class Trip {
   final double? startFuel;
   final double? endFuel;
   final double distanceKm;
+  final double consumptionRate;
   final bool isActive;
 
   Trip({
@@ -108,12 +109,13 @@ class Trip {
     this.startFuel,
     this.endFuel,
     required this.distanceKm,
+    required this.consumptionRate,
     required this.isActive,
   });
 
-  // Lógica de consumo estimado
+  // Lógica de consumo estimado basada en la tasa real del camión
   double get estimatedConsumption {
-    return (distanceKm / 100) * 15.0;
+    return (distanceKm / 100) * consumptionRate;
   }
 
   factory Trip.fromJson(Map<String, dynamic> json, String documentId) {
@@ -131,6 +133,7 @@ class Trip {
       startFuel: json['start_fuel']?.toDouble(),
       endFuel: json['end_fuel']?.toDouble(),
       distanceKm: (json['distance_km'] ?? 0.0).toDouble(),
+      consumptionRate: (json['consumption_rate'] ?? 15.0).toDouble(),
       isActive: json['is_active'] ?? false,
     );
   }

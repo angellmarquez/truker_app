@@ -90,57 +90,77 @@ class _DriverMapScreenState extends State<DriverMapScreen> with WidgetsBindingOb
           _mapController.move(_currentPosition!, _mapController.camera.zoom);
         });
 
-        // Update Firebase if trip is active
-        if (_isTripActive) {
-          _updateFirebaseLocation(position.latitude, position.longitude);
-        }
+        // Siempre actualizar Firebase si hay un camión asignado
+        _updateFirebaseLocation(position.latitude, position.longitude);
       }
     });
   }
 
   Future<void> _updateFirebaseLocation(double lat, double lng) async {
     final uid = FirebaseAuth.instance.currentUser?.uid;
-    if (uid == null) return;
-    
-    // In a real scenario, the driver's profile tells us their assigned truck ID.
-    // For now, we update assuming the truck ID matches the user's assigned truck.
-    final profile = await FirebaseService().getUserProfile(uid);
-    if (profile?.assignedTruckId != null) {
-      await FirebaseService().updateLocation(
-        profile!.assignedTruckId!, 
-        lat, 
-        lng, 
-        _isTripActive // El camión está 'en vía' si el viaje está activo
-      );
+    if (uid != null) {
+      // 1. Siempre actualizar la ubicación del conductor (perfil)
+      await FirebaseService().updateDriverLocation(uid, lat, lng);
+
+      // 2. Si tiene un camión asignado, actualizar la ubicación del camión
+      final truckId = _assignment?['assigned_truck_id'];
+      if (truckId != null) {
+        await FirebaseService().updateLocation(
+          truckId, 
+          lat, 
+          lng, 
+          _isTripActive 
+        );
+      }
     }
   }
 
   void _toggleTrip() async {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) return;
+
+    final newState = !_isTripActive;
+    
+    // Si estamos iniciando el viaje
+    if (newState) {
+      final profile = await FirebaseService().getUserProfile(uid);
+      if (profile?.assignedTruckId != null) {
+        // Obtener el camión para saber el combustible inicial
+        final truckDoc = await FirebaseService.firestore.collection('trucks').doc(profile!.assignedTruckId).get();
+        final truckData = truckDoc.data();
+        if (truckData != null) {
+          await FirebaseService().startTrip(
+            profile.assignedTruckId!,
+            truckData['current_cargo'] ?? 'Carga General',
+            (truckData['current_fuel'] ?? 0.0).toDouble(),
+            (truckData['consumption_rate_l100km'] ?? 15.0).toDouble(),
+          );
+        }
+      }
+    }
+
     setState(() {
-      _isTripActive = !_isTripActive;
+      _isTripActive = newState;
       if (!_isTripActive) {
-        // Reset distance when stopping
+        // Reset distance when stopping (o podrías guardarla antes de resetear)
         _distanceTravelled = 0.0;
         _currentSpeed = 0.0;
       }
     });
     
-    final uid = FirebaseAuth.instance.currentUser?.uid;
-    if (uid != null) {
-      // Actualizar estado de asignación del conductor en la base de datos
-      await FirebaseService().updateTripStatus(uid, _isTripActive);
+    // Actualizar estado de asignación del conductor en la base de datos
+    await FirebaseService().updateTripStatus(uid, _isTripActive);
 
-      // Si acaba de detenerse, actualizamos firebase para marcar "detenido" en el camión
-      if (!_isTripActive && _currentPosition != null) {
-        final profile = await FirebaseService().getUserProfile(uid);
-        if (profile?.assignedTruckId != null) {
-          await FirebaseService().updateLocation(
-            profile!.assignedTruckId!, 
-            _currentPosition!.latitude, 
-            _currentPosition!.longitude, 
-            false
-          );
-        }
+    // Si acaba de detenerse, actualizamos firebase para marcar "detenido" en el camión
+    if (!_isTripActive && _currentPosition != null) {
+      final profile = await FirebaseService().getUserProfile(uid);
+      if (profile?.assignedTruckId != null) {
+        await FirebaseService().updateLocation(
+          profile!.assignedTruckId!, 
+          _currentPosition!.latitude, 
+          _currentPosition!.longitude, 
+          false
+        );
       }
     }
   }
@@ -153,7 +173,49 @@ class _DriverMapScreenState extends State<DriverMapScreen> with WidgetsBindingOb
     final truckId = profile?.assignedTruckId;
     if (truckId == null) return;
 
+    // Pedir el combustible final antes de reportar
+    final fuelController = TextEditingController();
+    final fuel = await showDialog<double>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppTheme.deepNavy,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20), side: const BorderSide(color: AppTheme.primaryCyan)),
+        title: const Text('Confirmar Entrega', style: TextStyle(color: Colors.white)),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text('Ingresa el combustible actual del camión (L):', style: TextStyle(color: AppTheme.textMuted)),
+            const SizedBox(height: 16),
+            TextField(
+              controller: fuelController,
+              keyboardType: TextInputType.number,
+              style: const TextStyle(color: Colors.white),
+              decoration: InputDecoration(
+                filled: true,
+                fillColor: AppTheme.surfaceSlate,
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                suffixText: 'L',
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancelar')),
+          ElevatedButton(
+            onPressed: () {
+              final val = double.tryParse(fuelController.text);
+              if (val != null) Navigator.pop(ctx, val);
+            },
+            child: const Text('Reportar'),
+          ),
+        ],
+      ),
+    );
+
+    if (fuel == null) return;
+
     // Mostrar indicador de carga
+    if (!mounted) return;
     showDialog(
       context: context,
       barrierDismissible: false,
@@ -164,6 +226,8 @@ class _DriverMapScreenState extends State<DriverMapScreen> with WidgetsBindingOb
       await FirebaseService().markDeliveryCompleted(
         driverId: uid,
         truckId: truckId,
+        distance: _distanceTravelled / 1000, // Convertir metros a KM
+        endFuel: fuel,
       );
 
       setState(() {

@@ -6,15 +6,35 @@ import '../models/models.dart';
 import '../theme/app_theme.dart';
 
 class MonitoringScreen extends StatefulWidget {
-  const MonitoringScreen({super.key});
+  static final GlobalKey<_MonitoringScreenState> monitoringKey = GlobalKey<_MonitoringScreenState>();
+  MonitoringScreen() : super(key: monitoringKey);
 
   @override
   State<MonitoringScreen> createState() => _MonitoringScreenState();
+
+  static void centerOnTruck(String truckId) {
+    monitoringKey.currentState?._centerOnTruckById(truckId);
+  }
 }
 
 class _MonitoringScreenState extends State<MonitoringScreen> {
   Truck? _selectedTruck;
+  List<Truck> _allTrucks = [];
   final MapController _mapController = MapController();
+
+  void _centerOnTruckById(String truckId) {
+    final truck = _allTrucks.firstWhere((t) => t.id == truckId, orElse: () => Truck(id: '', licensePlate: '', currentFuel: 0, fuelCapacity: 0, status: '', updatedAt: DateTime.now(), consumptionRate: 15));
+    if (truck.id.isNotEmpty) {
+      _centerOnTruck(truck);
+    }
+  }
+
+  void _centerOnTruck(Truck truck) {
+    if (truck.lastLatitude != null && truck.lastLongitude != null) {
+      _mapController.move(LatLng(truck.lastLatitude!, truck.lastLongitude!), 14.0);
+      setState(() => _selectedTruck = truck);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -37,79 +57,130 @@ class _MonitoringScreenState extends State<MonitoringScreen> {
         children: [
           StreamBuilder<List<Truck>>(
             stream: FirebaseService().getTrucksStream(),
-            builder: (context, snapshot) {
-              if (snapshot.connectionState == ConnectionState.waiting && !snapshot.hasData) {
-                return const Center(child: CircularProgressIndicator(color: AppTheme.primaryCyan));
-              }
+            builder: (context, truckSnapshot) {
+              return StreamBuilder<List<Map<String, dynamic>>>(
+                stream: FirebaseService().getDriversStream(),
+                builder: (context, driverSnapshot) {
+                  final trucks = truckSnapshot.data ?? [];
+                  final drivers = driverSnapshot.data ?? [];
+                  _allTrucks = trucks;
 
-              final trucks = snapshot.data ?? [];
-              final markers = trucks.where((t) => t.lastLatitude != null && t.lastLongitude != null).map((truck) {
-                final isMoving = truck.status == 'moving';
-                final isAssigned = truck.assignedDriverId != null;
-                
-                Color truckColor;
-                if (isMoving) {
-                  truckColor = Colors.green;
-                } else if (isAssigned) {
-                  truckColor = Colors.orange;
-                } else {
-                  truckColor = AppTheme.primaryCyan; // Azul claro
-                }
+                  List<Marker> markers = [];
 
-                return Marker(
-                  point: LatLng(truck.lastLatitude!, truck.lastLongitude!),
-                  width: 80,
-                  height: 80,
-                  child: GestureDetector(
-                    onTap: () => setState(() => _selectedTruck = truck),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                          decoration: BoxDecoration(
-                            color: isMoving ? AppTheme.deepNavy : Colors.black87,
-                            borderRadius: BorderRadius.circular(4),
-                            border: Border.all(color: truckColor, width: 2),
-                            boxShadow: isMoving ? [BoxShadow(color: truckColor.withOpacity(0.5), blurRadius: 4)] : null,
-                          ),
-                          child: Text(
-                            truck.licensePlate,
-                            style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
+                  // 1. Marcadores de CAMIONES
+                  for (var truck in trucks) {
+                    if (truck.lastLatitude == null || truck.lastLongitude == null) continue;
+
+                    final bool isMoving = truck.status == 'moving';
+                    final bool isAssigned = truck.assignedDriverId != null;
+                    final Color truckColor = isAssigned 
+                        ? (isMoving ? AppTheme.primaryCyan : Colors.green) 
+                        : Colors.orange;
+
+                    markers.add(
+                      Marker(
+                        point: LatLng(truck.lastLatitude!, truck.lastLongitude!),
+                        width: 85,
+                        height: 85,
+                        child: GestureDetector(
+                          onTap: () => setState(() => _selectedTruck = truck),
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                decoration: BoxDecoration(
+                                  color: AppTheme.deepNavy.withOpacity(0.9),
+                                  borderRadius: BorderRadius.circular(10),
+                                  border: Border.all(color: truckColor, width: 1.5),
+                                ),
+                                child: Text(
+                                  isAssigned 
+                                      ? truck.assignedDriverName!.split(' ').first 
+                                      : 'Camión Solo',
+                                  style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                              const SizedBox(height: 2),
+                              Stack(
+                                alignment: Alignment.center,
+                                children: [
+                                  Container(
+                                    width: 38,
+                                    height: 38,
+                                    decoration: BoxDecoration(
+                                      shape: BoxShape.circle,
+                                      color: truckColor.withOpacity(0.2),
+                                      border: Border.all(color: truckColor, width: 2),
+                                    ),
+                                  ),
+                                  Icon(
+                                    isAssigned ? Icons.person_pin : Icons.local_shipping,
+                                    color: truckColor,
+                                    size: 28,
+                                  ),
+                                ],
+                              ),
+                            ],
                           ),
                         ),
-                        const SizedBox(height: 2),
-                        Container(
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            color: truckColor.withOpacity(0.2),
-                          ),
-                          padding: const EdgeInsets.all(4),
-                          child: Icon(
-                            Icons.local_shipping,
-                            color: truckColor,
-                            size: 32,
+                      ),
+                    );
+                  }
+
+                  // 2. Marcadores de CONDUCTORES DISPONIBLES (Online pero sin camión)
+                  for (var driver in drivers) {
+                    final bool isOnline = driver['is_online'] == true;
+                    final bool isAssigned = driver['assigned_truck_id'] != null;
+                    final double? lat = driver['last_latitude'];
+                    final double? lng = driver['last_longitude'];
+
+                    if (isOnline && !isAssigned && lat != null && lng != null) {
+                      markers.add(
+                        Marker(
+                          point: LatLng(lat, lng),
+                          width: 80,
+                          height: 80,
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                decoration: BoxDecoration(
+                                  color: Colors.black.withOpacity(0.8),
+                                  borderRadius: BorderRadius.circular(8),
+                                  border: Border.all(color: AppTheme.primaryCyan),
+                                ),
+                                child: Text(
+                                  driver['full_name']?.split(' ').first ?? 'Driver',
+                                  style: const TextStyle(color: AppTheme.primaryCyan, fontSize: 9, fontWeight: FontWeight.bold),
+                                ),
+                              ),
+                              const SizedBox(height: 2),
+                              const Icon(Icons.person_pin_circle, color: AppTheme.primaryCyan, size: 34),
+                            ],
                           ),
                         ),
-                      ],
+                      );
+                    }
+                  }
+
+                  return FlutterMap(
+                    mapController: _mapController,
+                    options: const MapOptions(
+                      initialCenter: LatLng(10.4806, -66.8983),
+                      initialZoom: 12.0,
                     ),
-                  ),
-                );
-              }).toList();
-
-              return FlutterMap(
-                mapController: _mapController,
-                options: const MapOptions(
-                  initialCenter: LatLng(10.4806, -66.8983), // Caracas por defecto
-                  initialZoom: 12.0,
-                ),
-                children: [
-                  TileLayer(
-                    urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-                    userAgentPackageName: 'com.truckfleet.app',
-                  ),
-                  MarkerLayer(markers: markers),
-                ],
+                    children: [
+                      TileLayer(
+                        urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                        userAgentPackageName: 'com.truckfleet.app',
+                      ),
+                      MarkerLayer(markers: markers),
+                    ],
+                  );
+                },
               );
             },
           ),
@@ -136,8 +207,20 @@ class _MonitoringScreenState extends State<MonitoringScreen> {
                             "Camión: ${_selectedTruck!.licensePlate}",
                             style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: Colors.white),
                           ),
+                          Container(
+                            decoration: BoxDecoration(
+                              color: AppTheme.primaryCyan.withOpacity(0.1),
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            child: IconButton(
+                              icon: const Icon(Icons.my_location, color: AppTheme.primaryCyan),
+                              tooltip: 'Localizar en mapa',
+                              onPressed: () => _centerOnTruck(_selectedTruck!),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
                           IconButton(
-                            icon: const Icon(Icons.close, color: Colors.white),
+                            icon: const Icon(Icons.close, color: Colors.white70),
                             onPressed: () => setState(() => _selectedTruck = null),
                           ),
                         ],
@@ -208,6 +291,121 @@ class _MonitoringScreenState extends State<MonitoringScreen> {
             ),
         ],
       ),
+      floatingActionButton: Container(
+        height: 60,
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(30),
+          boxShadow: [
+            BoxShadow(
+              color: AppTheme.primaryCyan.withOpacity(0.3),
+              blurRadius: 15,
+              offset: const Offset(0, 4),
+            ),
+          ],
+        ),
+        child: FloatingActionButton.extended(
+          backgroundColor: AppTheme.primaryCyan,
+          icon: const Icon(Icons.format_list_bulleted, color: Colors.black, size: 24),
+          label: const Text(
+            'VER FLOTA',
+            style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold, letterSpacing: 1.2),
+          ),
+          onPressed: () => _showTruckList(context),
+        ),
+      ),
     );
+  }
+
+  void _showTruckList(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: AppTheme.deepNavy,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) {
+        return Container(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text(
+                'Nuestra Flota',
+                style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 15),
+              Flexible(
+                child: ListView.builder(
+                  shrinkWrap: true,
+                  itemCount: _allTrucks.length,
+                  itemBuilder: (context, index) {
+                    final truck = _allTrucks[index];
+                    final hasLocation = truck.lastLatitude != null;
+                    return ListTile(
+                      leading: Icon(
+                        Icons.local_shipping,
+                        color: truck.status == 'moving' ? Colors.green : AppTheme.primaryCyan,
+                      ),
+                      title: Text(truck.licensePlate, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                      subtitle: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(truck.assignedDriverName ?? 'Sin conductor',
+                              style: const TextStyle(color: Colors.white70, fontSize: 13)),
+                          Text('Actualizado: ${_getTimeAgo(truck.updatedAt)}',
+                              style: TextStyle(color: Colors.white.withOpacity(0.4), fontSize: 11)),
+                        ],
+                      ),
+                      trailing: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: (truck.status == 'moving' ? Colors.green : Colors.orange).withOpacity(0.2),
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            child: Text(
+                              truck.status == 'moving' ? 'MOVIMIENTO' : 'DETENIDO',
+                              style: TextStyle(
+                                color: truck.status == 'moving' ? Colors.green : Colors.orange,
+                                fontSize: 9,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text('${truck.currentFuel.toStringAsFixed(0)}L', 
+                              style: const TextStyle(color: Colors.white70, fontSize: 11)),
+                        ],
+                      ),
+                      onTap: () {
+                        Navigator.pop(context);
+                        if (hasLocation) {
+                          _centerOnTruck(truck);
+                        } else {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text('Este camión no tiene ubicación registrada.')),
+                          );
+                        }
+                      },
+                    );
+                  },
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  String _getTimeAgo(DateTime dateTime) {
+    final diff = DateTime.now().difference(dateTime);
+    if (diff.inSeconds < 60) return 'Ahora mismo';
+    if (diff.inMinutes < 60) return 'Hace ${diff.inMinutes}m';
+    if (diff.inHours < 24) return 'Hace ${diff.inHours}h';
+    return 'Hace ${diff.inDays}d';
   }
 }

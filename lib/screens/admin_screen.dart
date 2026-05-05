@@ -4,6 +4,8 @@ import '../services/firebase_service.dart';
 import '../models/models.dart';
 import 'dart:convert';
 import '../theme/app_theme.dart';
+import 'home_screen.dart';
+import 'monitoring_screen.dart';
 
 class AdminUtils {
   static void showQRDialog(BuildContext context, String name, String email, String password) {
@@ -418,6 +420,24 @@ class _DriverCard extends StatelessWidget {
         ],
         const SizedBox(height: 12),
         Row(mainAxisAlignment: MainAxisAlignment.end, children: [
+          if (isAssigned) ...[
+            OutlinedButton.icon(
+              onPressed: () {
+                HomeScreen.setIndex(0); // Cambiar a pestaña de mapa
+                Future.delayed(const Duration(milliseconds: 300), () {
+                  MonitoringScreen.centerOnTruck(data['assigned_truck_id']);
+                });
+              },
+              icon: const Icon(Icons.location_searching, size: 16),
+              label: const Text('Localizar'),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: AppTheme.primaryCyan,
+                side: const BorderSide(color: AppTheme.primaryCyan),
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              ),
+            ),
+            const SizedBox(width: 8),
+          ],
           if (isAssigned && data['assignment_status'] == 'delivered') ...[
             // Botón de Rechazar
             OutlinedButton.icon(
@@ -593,37 +613,52 @@ class _RegisterDriverTabState extends State<_RegisterDriverTab> {
 
   @override
   Widget build(BuildContext context) {
+    final GlobalKey<FormState> _formKey = GlobalKey<FormState>();
+
     return SingleChildScrollView(
       padding: const EdgeInsets.all(24),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        const Text('Registrar Nuevo Conductor',
-            style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: AppTheme.primaryCyan)),
-        const SizedBox(height: 6),
-        const Text('Solo nombre y licencia. La asignación del viaje se hace luego desde el panel.',
-            style: TextStyle(color: AppTheme.textMuted, fontSize: 13)),
-        const SizedBox(height: 28),
-        TextField(controller: _nameController,
-            decoration: const InputDecoration(labelText: 'Nombre Completo *', prefixIcon: Icon(Icons.person_outline))),
-        const SizedBox(height: 16),
-        TextField(controller: _licenseController,
-            decoration: const InputDecoration(labelText: 'Número de Licencia *', prefixIcon: Icon(Icons.badge_outlined),
-                hintText: 'Ej: LIC-12345')),
-        const SizedBox(height: 32),
-        SizedBox(
-          height: 55,
-          child: ElevatedButton.icon(
-            onPressed: _isLoading ? null : _registerDriver,
-            icon: _isLoading
-                ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.black))
-                : const Icon(Icons.qr_code_2, color: Colors.black),
-            label: Text(_isLoading ? 'REGISTRANDO...' : 'REGISTRAR Y GENERAR QR',
-                style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.black)),
-            style: ElevatedButton.styleFrom(
-                backgroundColor: AppTheme.primaryCyan,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
+      child: Form(
+        key: _formKey,
+        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          const Text('Registrar Nuevo Conductor',
+              style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: AppTheme.primaryCyan)),
+          const SizedBox(height: 6),
+          const Text('Solo nombre y licencia. La asignación del viaje se hace luego desde el panel.',
+              style: TextStyle(color: AppTheme.textMuted, fontSize: 13)),
+          const SizedBox(height: 28),
+          TextFormField(
+            controller: _nameController,
+            decoration: const InputDecoration(labelText: 'Nombre Completo *', prefixIcon: Icon(Icons.person_outline)),
+            validator: (value) => (value == null || value.trim().isEmpty) ? 'Ingresa el nombre' : null,
           ),
-        ),
-      ]),
+          const SizedBox(height: 16),
+          TextFormField(
+            controller: _licenseController,
+            decoration: const InputDecoration(labelText: 'Número de Licencia *', prefixIcon: Icon(Icons.badge_outlined),
+                hintText: 'Ej: LIC-12345'),
+            validator: (value) => (value == null || value.trim().isEmpty) ? 'Ingresa la licencia' : null,
+          ),
+          const SizedBox(height: 32),
+          SizedBox(
+            height: 55,
+            child: ElevatedButton.icon(
+              onPressed: _isLoading ? null : () {
+                if (_formKey.currentState!.validate()) {
+                  _registerDriver();
+                }
+              },
+              icon: _isLoading
+                  ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.black))
+                  : const Icon(Icons.qr_code_2, color: Colors.black),
+              label: Text(_isLoading ? 'REGISTRANDO...' : 'REGISTRAR Y GENERAR QR',
+                  style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.black)),
+              style: ElevatedButton.styleFrom(
+                  backgroundColor: AppTheme.primaryCyan,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
+            ),
+          ),
+        ]),
+      ),
     );
   }
 }
@@ -692,98 +727,172 @@ class _RegisterTruckTabState extends State<_RegisterTruckTab> {
 
   @override
   Widget build(BuildContext context) {
+    final GlobalKey<FormState> _formKey = GlobalKey<FormState>();
+
     return SingleChildScrollView(
       padding: const EdgeInsets.all(24),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        const Text('Registrar Nuevo Camión',
-            style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: AppTheme.primaryCyan)),
-        const SizedBox(height: 24),
-        TextField(controller: _plateController,
-            decoration: const InputDecoration(labelText: 'Placa del Vehículo *', prefixIcon: Icon(Icons.pin_outlined))),
-        const SizedBox(height: 16),
-        TextField(controller: _serialController,
-            decoration: const InputDecoration(labelText: 'Serial del Motor (opcional)', prefixIcon: Icon(Icons.settings_outlined))),
-        const SizedBox(height: 16),
-        TextField(controller: _fuelCapacityController, keyboardType: TextInputType.number,
-            decoration: const InputDecoration(labelText: 'Capacidad de Combustible (L) *',
-                prefixIcon: Icon(Icons.local_gas_station_outlined), suffixText: 'L')),
-        const SizedBox(height: 16),
-        TextField(controller: _consumptionController, keyboardType: TextInputType.number,
-            decoration: const InputDecoration(labelText: 'Consumo Estimado',
-                prefixIcon: Icon(Icons.speed_outlined), suffixText: 'L/100km')),
-        const SizedBox(height: 32),
-        SizedBox(
-          height: 55,
-          child: ElevatedButton.icon(
-            onPressed: _isLoading ? null : _registerTruck,
-            icon: _isLoading
-                ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.black))
-                : const Icon(Icons.add_road, color: Colors.black),
-            label: Text(_isLoading ? 'GUARDANDO...' : 'REGISTRAR CAMIÓN',
-                style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.black)),
-            style: ElevatedButton.styleFrom(
-                backgroundColor: AppTheme.primaryCyan,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
+      child: Form(
+        key: _formKey,
+        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          const Text('Registrar Nuevo Camión',
+              style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: AppTheme.primaryCyan)),
+          const SizedBox(height: 24),
+          TextFormField(
+            controller: _plateController,
+            decoration: const InputDecoration(labelText: 'Placa del Vehículo *', prefixIcon: Icon(Icons.pin_outlined)),
+            validator: (value) => (value == null || value.trim().isEmpty) ? 'Ingresa la placa' : null,
           ),
-        ),
-        const SizedBox(height: 32),
-        const Divider(color: AppTheme.borderSlate),
-        const SizedBox(height: 16),
-        const Text('Camiones en Flota', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-        const SizedBox(height: 12),
-        StreamBuilder<List<Truck>>(
-          stream: FirebaseService().getTrucksStream(),
-          builder: (context, snapshot) {
-            final trucks = snapshot.data ?? [];
-            if (trucks.isEmpty) return const Text('No hay camiones registrados.', style: TextStyle(color: AppTheme.textMuted));
-            return ListView.separated(
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              itemCount: trucks.length,
-              separatorBuilder: (_, __) => const Divider(color: AppTheme.borderSlate),
-              itemBuilder: (_, i) {
-                final t = trucks[i];
-                final isAssigned = t.assignedDriverId != null;
-                final isMoving = t.status == 'moving';
-                
-                String statusText = 'Disponible';
-                Color statusColor = AppTheme.primaryCyan;
-                
-                if (isMoving) {
-                  statusText = 'En ruta';
-                  statusColor = Colors.green;
-                } else if (isAssigned) {
-                  statusText = 'Asignado';
-                  statusColor = Colors.orange;
+          const SizedBox(height: 16),
+          TextFormField(
+            controller: _serialController,
+            decoration: const InputDecoration(labelText: 'Serial del Motor (opcional)', prefixIcon: Icon(Icons.settings_outlined)),
+          ),
+          const SizedBox(height: 16),
+          TextFormField(
+            controller: _fuelCapacityController, 
+            keyboardType: TextInputType.number,
+            decoration: const InputDecoration(labelText: 'Capacidad de Combustible (L) *',
+                prefixIcon: Icon(Icons.local_gas_station_outlined), suffixText: 'L'),
+            validator: (value) {
+              if (value == null || value.isEmpty) return 'Ingresa la capacidad';
+              if (double.tryParse(value) == null) return 'Ingresa un número válido';
+              return null;
+            },
+          ),
+          const SizedBox(height: 16),
+          TextFormField(
+            controller: _consumptionController, 
+            keyboardType: TextInputType.number,
+            decoration: const InputDecoration(labelText: 'Rendimiento Técnico (L/100km)',
+                prefixIcon: Icon(Icons.speed_outlined), suffixText: 'L/100km'),
+            validator: (value) {
+              if (value != null && value.isNotEmpty && double.tryParse(value) == null) return 'Ingresa un número válido';
+              return null;
+            },
+          ),
+          const SizedBox(height: 32),
+          SizedBox(
+            height: 55,
+            child: ElevatedButton.icon(
+              onPressed: _isLoading ? null : () {
+                if (_formKey.currentState!.validate()) {
+                  _registerTruck();
                 }
-
-                return ListTile(
-                  contentPadding: EdgeInsets.zero,
-                  leading: CircleAvatar(
-                    backgroundColor: statusColor.withOpacity(0.15),
-                    child: Icon(Icons.local_shipping, color: statusColor),
-                  ),
-                  title: Text(t.licensePlate, style: const TextStyle(fontWeight: FontWeight.bold)),
-                  subtitle: Text(
-                      isAssigned 
-                          ? '${t.assignedDriverName ?? 'Conductor asignado'} • ${t.currentFuel.toStringAsFixed(0)}/${t.fuelCapacity.toStringAsFixed(0)} L'
-                          : 'Sin asignar • ${t.currentFuel.toStringAsFixed(0)}/${t.fuelCapacity.toStringAsFixed(0)} L',
-                      style: const TextStyle(color: AppTheme.textMuted, fontSize: 12)),
-                  trailing: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: statusColor.withOpacity(0.15),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Text(statusText,
-                        style: TextStyle(color: statusColor, fontSize: 12, fontWeight: FontWeight.bold)),
-                  ),
-                );
               },
-            );
-          },
-        ),
-      ]),
+              icon: _isLoading
+                  ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.black))
+                  : const Icon(Icons.add_road, color: Colors.black),
+              label: Text(_isLoading ? 'GUARDANDO...' : 'REGISTRAR CAMIÓN',
+                  style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.black)),
+              style: ElevatedButton.styleFrom(
+                  backgroundColor: AppTheme.primaryCyan,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
+            ),
+          ),
+          const SizedBox(height: 32),
+          const Divider(color: AppTheme.borderSlate),
+          const SizedBox(height: 16),
+          const Text('Camiones en Flota', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+          const SizedBox(height: 12),
+          StreamBuilder<List<Truck>>(
+            stream: FirebaseService().getTrucksStream(),
+            builder: (context, snapshot) {
+              final trucks = snapshot.data ?? [];
+              if (trucks.isEmpty) return const Text('No hay camiones registrados.', style: TextStyle(color: AppTheme.textMuted));
+              return ListView.separated(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                itemCount: trucks.length,
+                separatorBuilder: (_, __) => const Divider(color: AppTheme.borderSlate),
+                itemBuilder: (_, i) {
+                  final t = trucks[i];
+                  final isAssigned = t.assignedDriverId != null;
+                  final isMoving = t.status == 'moving';
+                  
+                  String statusText = 'Disponible';
+                  Color statusColor = AppTheme.primaryCyan;
+                  
+                  if (isMoving) {
+                    statusText = 'En ruta';
+                    statusColor = Colors.green;
+                  } else if (isAssigned) {
+                    statusText = 'Asignado';
+                    statusColor = Colors.orange;
+                  }
+
+                  return ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: CircleAvatar(
+                      backgroundColor: statusColor.withOpacity(0.15),
+                      child: Icon(Icons.local_shipping, color: statusColor),
+                    ),
+                    title: Text(t.licensePlate, style: const TextStyle(fontWeight: FontWeight.bold)),
+                    subtitle: Text(
+                        isAssigned 
+                            ? '${t.assignedDriverName ?? 'Conductor asignado'} • ${t.currentFuel.toStringAsFixed(0)}/${t.fuelCapacity.toStringAsFixed(0)} L'
+                            : 'Sin asignar • ${t.currentFuel.toStringAsFixed(0)}/${t.fuelCapacity.toStringAsFixed(0)} L',
+                        style: const TextStyle(color: AppTheme.textMuted, fontSize: 12)),
+                    trailing: Wrap(
+                      spacing: 8,
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: statusColor.withOpacity(0.15),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Text(statusText,
+                              style: TextStyle(color: statusColor, fontSize: 10, fontWeight: FontWeight.bold)),
+                        ),
+                        IconButton(
+                          icon: const Icon(Icons.delete_outline, color: Colors.red, size: 20),
+                          onPressed: () => _showDeleteTruckDialog(context, t),
+                          visualDensity: VisualDensity.compact,
+                          padding: EdgeInsets.zero,
+                          constraints: const BoxConstraints(),
+                        ),
+                      ],
+                    ),
+                  );
+                },
+              );
+            },
+          ),
+        ]),
+      ),
+    );
+  }
+
+  void _showDeleteTruckDialog(BuildContext context, Truck truck) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppTheme.deepNavy,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16), side: const BorderSide(color: Colors.red, width: 1)),
+        title: const Text('Eliminar Camión', style: TextStyle(color: Colors.white)),
+        content: Text('¿Estás seguro de eliminar el camión con placa ${truck.licensePlate}? Esta acción no se puede deshacer.',
+            style: const TextStyle(color: AppTheme.textMuted)),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('CANCELAR', style: TextStyle(color: AppTheme.textMuted)),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              Navigator.pop(ctx);
+              await FirebaseService().deleteTruck(truck.id);
+              if (context.mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text('Camión ${truck.licensePlate} eliminado.'), backgroundColor: Colors.red),
+                );
+              }
+            },
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            child: const Text('ELIMINAR', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+          ),
+        ],
+      ),
     );
   }
 }
