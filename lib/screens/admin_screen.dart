@@ -391,8 +391,13 @@ class _DriverCard extends StatelessWidget {
                 ),
               ),
               const SizedBox(width: 6),
-              Text(data['full_name'] ?? 'Sin nombre',
-                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+              Expanded(
+                child: Text(
+                  data['full_name'] ?? 'Sin nombre',
+                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
             ]),
             Text('Licencia: ${data['license_number'] ?? 'N/A'} • ${(data['is_online'] == true) ? "En línea" : "Desconectado"}',
                 style: TextStyle(color: (data['is_online'] == true) ? Colors.green : AppTheme.textMuted, fontSize: 11)),
