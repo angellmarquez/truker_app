@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'dart:math';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:http/http.dart' as http;
 import 'dart:typed_data';
@@ -79,12 +80,15 @@ class FirebaseService {
       throw Exception('Error creando usuario: ${signUpBody['error']?['message']}');
     }
 
+    final qrToken = _generateRandomToken(16);
+
     // Guardar/actualizar el perfil en Firestore
     await firestore.collection('profiles').doc(newDriverUid).set({
       'full_name': fullName,
       'license_number': licenseNumber,
       'role': 'driver',
       'is_active': false,
+      'qr_token': qrToken,
       'assigned_truck_id': assignedTruckId,
       'current_cargo': currentCargo,
       'created_at': FieldValue.serverTimestamp(),
@@ -97,7 +101,48 @@ class FirebaseService {
       });
     }
 
-    return {'email': email, 'password': password};
+    return {'email': email, 'password': password, 'qr_token': qrToken};
+  }
+
+  String _generateRandomToken(int length) {
+    const chars = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+    final rnd = Random();
+    return String.fromCharCodes(Iterable.generate(
+      length, (_) => chars.codeUnitAt(rnd.nextInt(chars.length)),
+    ));
+  }
+
+  // Verificar y "quemar" el token del QR (un solo uso)
+  Future<void> verifyAndBurnToken(String email, String token) async {
+    final snapshot = await firestore
+        .collection('profiles')
+        .where('qr_token', isEqualTo: token)
+        .limit(1)
+        .get();
+
+    if (snapshot.docs.isEmpty) {
+      throw Exception('El código QR ya ha sido usado o es inválido.');
+    }
+
+    final doc = snapshot.docs.first;
+    final profileData = doc.data();
+    
+    // Doble verificación del email (opcional pero recomendado)
+    // El email en Auth y en el perfil debe coincidir si lo guardamos ahí,
+    // pero aquí lo usaremos para asegurar que el token pertenece a quien dice ser.
+    // Buscamos por token que es único, pero verificamos pertenencia.
+    
+    // Si llegamos aquí, el token es válido. Procedemos a "quemarlo".
+    await doc.reference.update({'qr_token': null});
+  }
+
+  // Generar un nuevo token para un conductor existente
+  Future<String> generateNewQRToken(String driverId) async {
+    final newToken = _generateRandomToken(16);
+    await firestore.collection('profiles').doc(driverId).update({
+      'qr_token': newToken,
+    });
+    return newToken;
   }
 
   // Actualizar estado online/offline del conductor

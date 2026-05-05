@@ -87,12 +87,19 @@ class _LoginScreenState extends State<LoginScreen> {
                     Navigator.pop(context); // Cerrar el escáner
 
                     try {
-                      // El QR contiene un JSON: {"email":"...","password":"..."}
+                      // El QR contiene un JSON: {"email":"...","password":"...","token":"..."}
                       final data = jsonDecode(barcode!.rawValue!) as Map<String, dynamic>;
                       final email = data['email'] as String;
                       final password = data['password'] as String;
+                      final token = data['token'] as String?;
 
                       setState(() => _isLoading = true);
+
+                      if (token != null) {
+                        // Validar y quemar token antes de entrar
+                        await FirebaseService().verifyAndBurnToken(email, token);
+                      }
+
                       await FirebaseService().signIn(email, password);
                       // main.dart detecta la sesión y redirige automáticamente
                     } catch (e) {

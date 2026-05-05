@@ -8,8 +8,12 @@ import 'home_screen.dart';
 import 'monitoring_screen.dart';
 
 class AdminUtils {
-  static void showQRDialog(BuildContext context, String name, String email, String password) {
-    final qrData = '{"email":"$email","password":"$password"}';
+  static void showQRDialog(BuildContext context, String name, String email, String password, String token) {
+    final qrData = jsonEncode({
+      'email': email,
+      'password': password,
+      'token': token,
+    });
     showDialog(
       context: context,
       barrierDismissible: false,
@@ -220,8 +224,8 @@ class _DriverCard extends StatelessWidget {
             maxLines: 2,
             overflow: TextOverflow.ellipsis,
           ),
-          content: SizedBox(
-            width: 340, // Limitar ancho para evitar desbordamiento
+          content: Container(
+            width: MediaQuery.of(ctx).size.width * 0.85, // Ancho dinámico basado en la pantalla
             child: SingleChildScrollView(
               child: Column(mainAxisSize: MainAxisSize.min, children: [
               // Selector de camión
@@ -230,6 +234,7 @@ class _DriverCard extends StatelessWidget {
                 builder: (ctx, snapshot) {
                   final trucks = snapshot.data ?? [];
                   return DropdownButtonFormField<String>(
+                    isExpanded: true, // Expandir para evitar overflow horizontal
                     value: selectedTruckId,
                     dropdownColor: AppTheme.deepNavy,
                     decoration: InputDecoration(
@@ -241,10 +246,14 @@ class _DriverCard extends StatelessWidget {
                         borderSide: const BorderSide(color: AppTheme.borderSlate),
                       ),
                     ),
-                    hint: const Text('Selecciona un camión', style: TextStyle(color: AppTheme.textMuted)),
+                    hint: const Text('Selecciona un camión', 
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(color: AppTheme.textMuted)),
                     items: trucks.map((t) => DropdownMenuItem<String>(
                       value: t.id,
-                      child: Text(t.licensePlate, style: const TextStyle(color: Colors.white)),
+                      child: Text(t.licensePlate, 
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(color: Colors.white)),
                     )).toList(),
                     onChanged: (val) {
                       setDialogState(() {
@@ -512,10 +521,23 @@ class _DriverCard extends StatelessWidget {
           IconButton(
             icon: const Icon(Icons.qr_code_2, color: AppTheme.primaryCyan, size: 24),
             tooltip: 'Ver código QR de acceso',
-            onPressed: () {
+            onPressed: () async {
               final email = '${data['license_number'].toString().toLowerCase().replaceAll(RegExp(r'[^a-z0-9]'), '')}@flota.app';
               final password = 'Flota${data['license_number'].toString().toUpperCase()}2024!';
-              AdminUtils.showQRDialog(context, data['full_name'], email, password);
+              
+              try {
+                // Para ver el QR de un conductor existente, generamos un nuevo token de un solo uso
+                final newToken = await FirebaseService().generateNewQRToken(data['id']);
+                if (context.mounted) {
+                  AdminUtils.showQRDialog(context, data['full_name'], email, password, newToken);
+                }
+              } catch (e) {
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('Error al generar QR: $e'), backgroundColor: Colors.red),
+                  );
+                }
+              }
             },
           ),
           const SizedBox(width: 4),
@@ -606,7 +628,13 @@ class _RegisterDriverTabState extends State<_RegisterDriverTab> {
       if (!mounted) return;
       _nameController.clear();
       _licenseController.clear();
-      AdminUtils.showQRDialog(context, name, credentials['email']!, credentials['password']!);
+      AdminUtils.showQRDialog(
+        context, 
+        name, 
+        credentials['email']!, 
+        credentials['password']!, 
+        credentials['qr_token']!
+      );
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
