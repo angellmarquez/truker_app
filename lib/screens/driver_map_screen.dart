@@ -189,10 +189,12 @@ class _DriverMapScreenState extends State<DriverMapScreen> with WidgetsBindingOb
             TextField(
               controller: fuelController,
               keyboardType: TextInputType.number,
+              maxLength: 6, // Máximo 999,999 L
               style: const TextStyle(color: Colors.white),
               decoration: InputDecoration(
                 filled: true,
                 fillColor: AppTheme.surfaceSlate,
+                counterText: '',
                 border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                 suffixText: 'L',
               ),

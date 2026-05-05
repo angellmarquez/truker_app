@@ -214,10 +214,16 @@ class _DriverCard extends StatelessWidget {
             borderRadius: BorderRadius.circular(16),
             side: const BorderSide(color: AppTheme.primaryCyan),
           ),
-          title: Text('Asignar viaje a ${data['full_name']}',
-              style: const TextStyle(color: Colors.white, fontSize: 16)),
-          content: SingleChildScrollView(
-            child: Column(mainAxisSize: MainAxisSize.min, children: [
+          title: Text(
+            'Asignar viaje a ${data['full_name']}',
+            style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+          ),
+          content: SizedBox(
+            width: 340, // Limitar ancho para evitar desbordamiento
+            child: SingleChildScrollView(
+              child: Column(mainAxisSize: MainAxisSize.min, children: [
               // Selector de camión
               StreamBuilder<List<Truck>>(
                 stream: FirebaseService().getTrucksStream(),
@@ -253,10 +259,12 @@ class _DriverCard extends StatelessWidget {
               const SizedBox(height: 16),
               TextField(
                 controller: cargoController,
+                maxLength: 50,
                 decoration: InputDecoration(
                   labelText: 'Mercancía a transportar *',
                   prefixIcon: const Icon(Icons.inventory_2_outlined),
                   hintText: 'Ej: Cemento 500 sacos',
+                  counterText: '', // Ocultar contador para mantener estética limpia
                   border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
                   enabledBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(8),
@@ -267,10 +275,12 @@ class _DriverCard extends StatelessWidget {
               const SizedBox(height: 16),
               TextField(
                 controller: destController,
+                maxLength: 60,
                 decoration: InputDecoration(
                   labelText: 'Destino *',
                   prefixIcon: const Icon(Icons.location_on_outlined),
                   hintText: 'Ej: Av. Principal, Caracas',
+                  counterText: '',
                   border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
                   enabledBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(8),
@@ -628,14 +638,23 @@ class _RegisterDriverTabState extends State<_RegisterDriverTab> {
           const SizedBox(height: 28),
           TextFormField(
             controller: _nameController,
-            decoration: const InputDecoration(labelText: 'Nombre Completo *', prefixIcon: Icon(Icons.person_outline)),
+            maxLength: 40,
+            decoration: const InputDecoration(
+              labelText: 'Nombre Completo',
+              prefixIcon: Icon(Icons.person_outline),
+              counterText: '',
+            ),
             validator: (value) => (value == null || value.trim().isEmpty) ? 'Ingresa el nombre' : null,
           ),
           const SizedBox(height: 16),
           TextFormField(
             controller: _licenseController,
-            decoration: const InputDecoration(labelText: 'Número de Licencia *', prefixIcon: Icon(Icons.badge_outlined),
-                hintText: 'Ej: LIC-12345'),
+            maxLength: 20,
+            decoration: const InputDecoration(
+              labelText: 'Número de Licencia',
+              prefixIcon: Icon(Icons.badge_outlined),
+              counterText: '',
+            ),
             validator: (value) => (value == null || value.trim().isEmpty) ? 'Ingresa la licencia' : null,
           ),
           const SizedBox(height: 32),
@@ -739,20 +758,35 @@ class _RegisterTruckTabState extends State<_RegisterTruckTab> {
           const SizedBox(height: 24),
           TextFormField(
             controller: _plateController,
-            decoration: const InputDecoration(labelText: 'Placa del Vehículo *', prefixIcon: Icon(Icons.pin_outlined)),
+            maxLength: 10,
+            decoration: const InputDecoration(
+              labelText: 'Placa del Camión',
+              prefixIcon: Icon(Icons.pin_outlined),
+              counterText: '',
+            ),
             validator: (value) => (value == null || value.trim().isEmpty) ? 'Ingresa la placa' : null,
           ),
           const SizedBox(height: 16),
           TextFormField(
             controller: _serialController,
-            decoration: const InputDecoration(labelText: 'Serial del Motor (opcional)', prefixIcon: Icon(Icons.settings_outlined)),
+            maxLength: 30,
+            decoration: const InputDecoration(
+              labelText: 'Serial del Motor (opcional)', 
+              prefixIcon: Icon(Icons.settings_outlined),
+              counterText: '',
+            ),
           ),
           const SizedBox(height: 16),
           TextFormField(
             controller: _fuelCapacityController, 
             keyboardType: TextInputType.number,
-            decoration: const InputDecoration(labelText: 'Capacidad de Combustible (L) *',
-                prefixIcon: Icon(Icons.local_gas_station_outlined), suffixText: 'L'),
+            maxLength: 6,
+            decoration: const InputDecoration(
+              labelText: 'Capacidad de Combustible (L) *',
+              prefixIcon: Icon(Icons.local_gas_station_outlined), 
+              suffixText: 'L',
+              counterText: '',
+            ),
             validator: (value) {
               if (value == null || value.isEmpty) return 'Ingresa la capacidad';
               if (double.tryParse(value) == null) return 'Ingresa un número válido';
